@@ -5,6 +5,11 @@ venv/
 # Кэш Python
 __pycache__/
 *.pyc
+*.pyo
+
+# База данных (локальная)
+*.db
+*.sqlite
 
 # Файлы данных (создаются при запуске)
 favorites.txt
