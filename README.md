@@ -1,3 +1,5 @@
+[![CI](https://github.com/UZer88/quote-generator/actions/workflows/ci.yml/badge.svg)](https://github.com/UZer88/quote-generator/actions/workflows/ci.yml)
+
 # Генератор случайных цитат
 
 Веб-приложение для просмотра вдохновляющих цитат с категориями, избранным и статистикой. Бэкенд на FastAPI, фронтенд на чистом HTML/CSS/JS.

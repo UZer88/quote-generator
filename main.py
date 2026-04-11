@@ -1,12 +1,48 @@
 import sqlite3
 import random
 import uuid
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from typing import Optional, List
+from contextlib import asynccontextmanager
+import os
 
-app = FastAPI(title="Quote Generator API", description="Генератор случайных цитат с избранным", version="2.0.0")
+
+# ----- Инициализация базы данных -----
+def init_db():
+    """Создаёт таблицы при запуске приложения"""
+    conn = sqlite3.connect('quotes.db')
+    cursor = conn.cursor()
+
+    # Таблица цитат
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS quotes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            text TEXT NOT NULL,
+            author TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Таблица избранного
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS favorites (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            quote_id INTEGER NOT NULL,
+            session_id TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (quote_id) REFERENCES quotes (id)
+        )
+    ''')
+
+    # Создаём индекс для быстрого поиска по session_id
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_favorites_session ON favorites(session_id)')
+
+    conn.commit()
+    conn.close()
+    print("✅ База данных инициализирована")
 
 
 # ----- Модели данных -----
@@ -101,12 +137,13 @@ def get_favorites(session_id: str, limit: int = 50):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
-                   SELECT f.id as favorite_id, f.created_at, q.id, q.text, q.author, q.category
-                   FROM favorites f
-                            JOIN quotes q ON f.quote_id = q.id
-                   WHERE f.session_id = ?
-                   ORDER BY f.created_at DESC LIMIT ?
-                   """, (session_id, limit))
+        SELECT f.id as favorite_id, f.created_at, q.id, q.text, q.author, q.category
+        FROM favorites f
+        JOIN quotes q ON f.quote_id = q.id
+        WHERE f.session_id = ?
+        ORDER BY f.created_at DESC
+        LIMIT ?
+    """, (session_id, limit))
     rows = cursor.fetchall()
     conn.close()
 
@@ -129,8 +166,14 @@ def is_favorite(quote_id: int, session_id: str) -> bool:
     return exists
 
 
-# ----- Эндпоинты API -----
+# ----- FastAPI приложение -----
+app = FastAPI(title="Quote Generator API", description="Генератор случайных цитат с избранным", version="2.0.0")
 
+# Инициализируем базу данных при старте
+init_db()
+
+
+# ----- Эндпоинты -----
 @app.get("/")
 def root():
     return {"message": "Quote Generator API", "docs": "/docs", "frontend": "/frontend"}
@@ -153,7 +196,6 @@ def frontend():
             .nav-buttons { margin: 20px 0; }
             .quote-list { list-style: none; padding: 0; }
             .quote-list li { background: #e0e0e0; margin: 10px 0; padding: 15px; border-radius: 8px; }
-            hr { margin: 30px 0; }
         </style>
     </head>
     <body>
@@ -195,7 +237,6 @@ def frontend():
 
             let currentQuote = null;
 
-            // Загружаем категории
             fetch('/categories')
                 .then(res => res.json())
                 .then(data => {
@@ -426,3 +467,9 @@ def get_favorites_endpoint(session_id: str, limit: int = 50):
 def check_favorite(quote_id: int, session_id: str):
     favorite = is_favorite(quote_id, session_id)
     return {"quote_id": quote_id, "is_favorite": favorite}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
